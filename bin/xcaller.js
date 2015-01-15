@@ -13,6 +13,8 @@
 
   beanstalkPort = process.env.BEANSTALK_PORT || 11300;
 
+  MAX_RETRIES = process.env.MAX_RETRIES || 20;
+
   http = require('http');
 
   nodestalker = require('nodestalker');
@@ -28,8 +30,6 @@
   RETRY_PRIORITY = 11;
 
   RETRY_DELAY = 5;
-
-  MAX_RETRIES = 3;
 
   CLIENT_TIMEOUT = 4000;
 

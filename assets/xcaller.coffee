@@ -6,6 +6,7 @@
 
 beanstalkHost = process.env.BEANSTALK_HOST or '127.0.0.1'
 beanstalkPort = process.env.BEANSTALK_PORT or 11300
+MAX_RETRIES   = process.env.MAX_RETRIES or 30
 
 http = require('http')
 
@@ -20,8 +21,7 @@ beanstalkWriteClient = nodestalker.Client("#{beanstalkHost}:#{beanstalkPort}")
 
 RETRY_PRIORITY = 11
 RETRY_DELAY    = 5 # <-- backoff is this times the number of attempts
-MAX_RETRIES    = 3
-# total time is 1*5 + 2*5 + 3*5 = 30 seconds
+                   #     total time is 1*5 + 2*5 + 3*5 + ...
 
 
 CLIENT_TIMEOUT     = 4000  # <-- clients must respond in this amount of time
