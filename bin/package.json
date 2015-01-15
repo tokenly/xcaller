@@ -1,0 +1,26 @@
+{
+  "name": "xcaller",
+  "version": "0.0.0",
+  "description": "calls webhooks from beanstalkd notifications",
+  "main": "xcaller.js",
+  "dependencies": {
+    "figlet": "^1.1.0",
+    "moment": "^2",
+    "nodestalker": "^0.1",
+    "restler": "^3"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tokenly/xcaller"
+  },
+  "author": "Devon Weller",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/tokenly/xcaller/issues"
+  },
+  "homepage": "https://github.com/tokenly/xcaller"
+}
