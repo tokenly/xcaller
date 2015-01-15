@@ -77,21 +77,29 @@
         payload: jobData.payload
       })
     }).on('complete', function(data, response) {
-      var msg;
+      var msg, _ref;
       msg = '';
-      console.log(("[" + (new Date().toString()) + "] received HTTP response: ") + response.statusCode.toString());
-      if (response.statusCode.toString().charAt(0) === '2') {
+      if (response) {
+        console.log(("[" + (new Date().toString()) + "] received HTTP response: ") + (response != null ? (_ref = response.statusCode) != null ? _ref.toString() : void 0 : void 0));
+      } else {
+        console.log("[" + (new Date().toString()) + "] received no HTTP response");
+      }
+      if ((response != null) && response.statusCode.toString().charAt(0) === '2') {
         success = true;
       } else {
         success = false;
-        msg = "ERROR: received HTTP response with code " + response.statusCode;
+        if (response != null) {
+          msg = "ERROR: received HTTP response with code " + response.statusCode;
+        } else {
+          msg = "ERROR: no HTTP response received";
+        }
       }
       finishJob(success, msg);
     }).on('timeout', function(e) {
       console.log("[" + (new Date().toString()) + "] timeout", e);
       finishJob(false, "Timeout: " + e);
     }).on('error', function(e) {
-      console.log("[" + (new Date().toString()) + "] error", e);
+      console.log("[" + (new Date().toString()) + "] http error", e);
       finishJob(false, "Error: " + e);
     });
     finishJob = function(success, err) {

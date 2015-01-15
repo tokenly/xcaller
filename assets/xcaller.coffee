@@ -78,12 +78,19 @@ processJob = (job, callback)->
         })
     }).on 'complete', (data, response)->
         msg = ''
-        console.log "[#{new Date().toString()}] received HTTP response: "+response.statusCode.toString()
-        if response.statusCode.toString().charAt(0) == '2'
+        if response
+            console.log "[#{new Date().toString()}] received HTTP response: "+response?.statusCode?.toString()
+        else
+            console.log "[#{new Date().toString()}] received no HTTP response"
+        if response? and response.statusCode.toString().charAt(0) == '2'
             success = true
         else
             success = false
-            msg = "ERROR: received HTTP response with code "+response.statusCode
+            if response?
+                msg = "ERROR: received HTTP response with code "+response.statusCode
+            else
+                msg = "ERROR: no HTTP response received"
+
         finishJob(success, msg)
         return
 
@@ -93,7 +100,7 @@ processJob = (job, callback)->
         return
 
     .on 'error', (e)->
-        console.log "[#{new Date().toString()}] error",e
+        console.log "[#{new Date().toString()}] http error",e
         finishJob(false, "Error: "+e)
         return
 
