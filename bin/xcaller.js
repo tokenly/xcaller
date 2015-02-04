@@ -7,13 +7,13 @@
  */
 
 (function() {
-  var CLIENT_TIMEOUT, MAX_RETRIES, MAX_SHUTDOWN_DELAY, RETRY_DELAY, RETRY_PRIORITY, beanstalkHost, beanstalkPort, beanstalkWriteClient, figlet, gracefulShutdown, http, insertJobIntoBeanstalk, jobCount, moment, nodestalker, processJob, reserveJob, rest;
+  var CLIENT_TIMEOUT, MAX_RETRIES, MAX_SHUTDOWN_DELAY, RETRY_DELAY, RETRY_PRIORITY, beanstalkHost, beanstalkPort, figlet, gracefulShutdown, http, insertJobIntoBeanstalk, jobCount, moment, nodestalker, processJob, reserveJob, rest;
 
   beanstalkHost = process.env.BEANSTALK_HOST || '127.0.0.1';
 
   beanstalkPort = process.env.BEANSTALK_PORT || 11300;
 
-  MAX_RETRIES = process.env.MAX_RETRIES || 20;
+  MAX_RETRIES = process.env.MAX_RETRIES || 30;
 
   http = require('http');
 
@@ -24,8 +24,6 @@
   moment = require('moment');
 
   figlet = require('figlet');
-
-  beanstalkWriteClient = nodestalker.Client("" + beanstalkHost + ":" + beanstalkPort);
 
   RETRY_PRIORITY = 11;
 
@@ -143,6 +141,8 @@
   };
 
   insertJobIntoBeanstalk = function(queue, data, retry_priority, retry_delay, callback) {
+    var beanstalkWriteClient;
+    beanstalkWriteClient = nodestalker.Client("" + beanstalkHost + ":" + beanstalkPort);
     beanstalkWriteClient.use(queue).onSuccess(function() {
       beanstalkWriteClient.put(JSON.stringify(data), retry_priority, retry_delay).onSuccess(function() {
         callback(true);
@@ -196,6 +196,6 @@
 
   setTimeout(function() {
     return reserveJob();
-  }, 1);
+  }, 10);
 
 }).call(this);

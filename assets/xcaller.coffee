@@ -16,7 +16,6 @@ moment = require('moment')
 figlet = require('figlet');
 
 # get one global write client
-beanstalkWriteClient = nodestalker.Client("#{beanstalkHost}:#{beanstalkPort}")
 
 
 RETRY_PRIORITY = 11
@@ -95,12 +94,12 @@ processJob = (job, callback)->
         return
 
     .on 'timeout', (e)->
-        console.log "[#{new Date().toString()}] timeout",e
+        console.log "[#{new Date().toString()}] timeout", e
         finishJob(false, "Timeout: "+e)
         return
 
     .on 'error', (e)->
-        console.log "[#{new Date().toString()}] http error",e
+        console.log "[#{new Date().toString()}] http error", e
         finishJob(false, "Error: "+e)
         return
 
@@ -149,6 +148,7 @@ processJob = (job, callback)->
 
 # beanstalk
 insertJobIntoBeanstalk = (queue, data, retry_priority, retry_delay, callback)->
+    beanstalkWriteClient = nodestalker.Client("#{beanstalkHost}:#{beanstalkPort}")
     beanstalkWriteClient.use(queue).onSuccess ()->
         beanstalkWriteClient.put(JSON.stringify(data), retry_priority, retry_delay)
         .onSuccess ()->
@@ -208,6 +208,6 @@ figlet.text('Tokenly XCaller', 'Slant', (err, data)->
 # run the reserver
 setTimeout ()->
     reserveJob()
-, 1
+, 10
 
 
