@@ -2,7 +2,7 @@
 
 /*
  *
- * This simple server loads events into a beanstalkd queue
+ * Calls notifications to subscribed clients
  *
  */
 
@@ -14,6 +14,8 @@
   beanstalkPort = process.env.BEANSTALK_PORT || 11300;
 
   MAX_RETRIES = process.env.MAX_RETRIES || 30;
+
+  CLIENT_TIMEOUT = process.env.CLIENT_TIMEOUT || 10000;
 
   http = require('http');
 
@@ -29,9 +31,7 @@
 
   RETRY_DELAY = 5;
 
-  CLIENT_TIMEOUT = 4000;
-
-  MAX_SHUTDOWN_DELAY = 5000;
+  MAX_SHUTDOWN_DELAY = CLIENT_TIMEOUT + 1000;
 
   jobCount = 0;
 

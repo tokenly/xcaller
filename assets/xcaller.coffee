@@ -1,12 +1,13 @@
 ###
 #
-# This simple server loads events into a beanstalkd queue
+# Calls notifications to subscribed clients
 #
 ###
 
-beanstalkHost = process.env.BEANSTALK_HOST or '127.0.0.1'
-beanstalkPort = process.env.BEANSTALK_PORT or 11300
-MAX_RETRIES   = process.env.MAX_RETRIES or 30
+beanstalkHost  = process.env.BEANSTALK_HOST or '127.0.0.1'
+beanstalkPort  = process.env.BEANSTALK_PORT or 11300
+MAX_RETRIES    = process.env.MAX_RETRIES    or 30
+CLIENT_TIMEOUT = process.env.CLIENT_TIMEOUT or 10000  # <-- clients must respond in this amount of time
 
 http = require('http')
 
@@ -23,8 +24,7 @@ RETRY_DELAY    = 5 # <-- backoff is this times the number of attempts
                    #     total time is 1*5 + 2*5 + 3*5 + ...
 
 
-CLIENT_TIMEOUT     = 4000  # <-- clients must respond in this amount of time
-MAX_SHUTDOWN_DELAY = 5000  # <-- when shutting down, never wait longer than this for a response from any client
+MAX_SHUTDOWN_DELAY = CLIENT_TIMEOUT + 1000  # <-- when shutting down, never wait longer than this for a response from any client
 
 # listen
 jobCount = 0
