@@ -14,7 +14,7 @@ http = require('http')
 nodestalker = require('nodestalker')
 rest = require('restler')
 moment = require('moment')
-figlet = require('figlet');
+figlet = require('figlet')
 
 # get one global write client
 
