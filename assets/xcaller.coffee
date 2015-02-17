@@ -8,6 +8,7 @@ beanstalkHost  = process.env.BEANSTALK_HOST or '127.0.0.1'
 beanstalkPort  = process.env.BEANSTALK_PORT or 11300
 MAX_RETRIES    = process.env.MAX_RETRIES    or 30
 CLIENT_TIMEOUT = process.env.CLIENT_TIMEOUT or 10000  # <-- clients must respond in this amount of time
+MAX_QUEUE_SIZE = process.env.MAX_QUEUE_SIZE or 5
 
 http = require('http')
 
@@ -29,7 +30,12 @@ MAX_SHUTDOWN_DELAY = CLIENT_TIMEOUT + 1000  # <-- when shutting down, never wait
 # listen
 jobCount = 0
 reserveJob = ()->
-    console.log "[#{new Date().toString()}] connecting to beanstalk"
+    if jobCount >= MAX_QUEUE_SIZE
+        console.log "[#{new Date().toString()}] jobCount of #{jobCount} has reached maximum.  Delaying."
+        setTimeout(reserveJob, 500)
+        return
+
+    # console.log "[#{new Date().toString()}] connecting to beanstalk"
     beanstalkReadClient = nodestalker.Client("#{beanstalkHost}:#{beanstalkPort}")
     beanstalkReadClient.watch('notifications_out').onSuccess ()->
         beanstalkReadClient.reserve().onSuccess (job)->

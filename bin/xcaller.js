@@ -7,7 +7,7 @@
  */
 
 (function() {
-  var CLIENT_TIMEOUT, MAX_RETRIES, MAX_SHUTDOWN_DELAY, RETRY_DELAY, RETRY_PRIORITY, beanstalkHost, beanstalkPort, figlet, gracefulShutdown, http, insertJobIntoBeanstalk, jobCount, moment, nodestalker, processJob, reserveJob, rest;
+  var CLIENT_TIMEOUT, MAX_QUEUE_SIZE, MAX_RETRIES, MAX_SHUTDOWN_DELAY, RETRY_DELAY, RETRY_PRIORITY, beanstalkHost, beanstalkPort, figlet, gracefulShutdown, http, insertJobIntoBeanstalk, jobCount, moment, nodestalker, processJob, reserveJob, rest;
 
   beanstalkHost = process.env.BEANSTALK_HOST || '127.0.0.1';
 
@@ -16,6 +16,8 @@
   MAX_RETRIES = process.env.MAX_RETRIES || 30;
 
   CLIENT_TIMEOUT = process.env.CLIENT_TIMEOUT || 10000;
+
+  MAX_QUEUE_SIZE = process.env.MAX_QUEUE_SIZE || 5;
 
   http = require('http');
 
@@ -37,7 +39,11 @@
 
   reserveJob = function() {
     var beanstalkReadClient;
-    console.log("[" + (new Date().toString()) + "] connecting to beanstalk");
+    if (jobCount >= MAX_QUEUE_SIZE) {
+      console.log("[" + (new Date().toString()) + "] jobCount of " + jobCount + " has reached maximum.  Delaying.");
+      setTimeout(reserveJob, 500);
+      return;
+    }
     beanstalkReadClient = nodestalker.Client("" + beanstalkHost + ":" + beanstalkPort);
     beanstalkReadClient.watch('notifications_out').onSuccess(function() {
       beanstalkReadClient.reserve().onSuccess(function(job) {
