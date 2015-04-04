@@ -95,16 +95,18 @@
         if (response != null) {
           msg = "ERROR: received HTTP response with code " + response.statusCode;
         } else {
-          msg = "ERROR: no HTTP response received";
+          if (data instanceof Error) {
+            msg = "" + data;
+          } else {
+            msg = "ERROR: no HTTP response received";
+          }
         }
       }
       finishJob(success, msg);
     }).on('timeout', function(e) {
-      console.log("[" + (new Date().toString()) + "] timeout", e);
-      finishJob(false, "Timeout: " + e);
+      console.log("[" + (new Date().toString()) + "] " + job.id + " timeout", e);
     }).on('error', function(e) {
-      console.log("[" + (new Date().toString()) + "] http error", e);
-      finishJob(false, "Error: " + e);
+      console.log("[" + (new Date().toString()) + "] " + job.id + " http error", e);
     });
     finishJob = function(success, err) {
       var finished, queueEntry;
@@ -113,14 +115,14 @@
       if (success) {
         finished = true;
       } else {
-        console.log("[" + (new Date().toString()) + "] error - retrying");
+        console.log("[" + (new Date().toString()) + "] error - retrying | " + err);
         if (jobData.meta.attempt >= MAX_RETRIES) {
           console.log("[" + (new Date().toString()) + "] giving up after attempt " + jobData.meta.attempt);
           finished = true;
         }
       }
       if (finished) {
-        console.log("[" + (new Date().toString()) + "] inserting final notification status");
+        console.log("[" + (new Date().toString()) + "] inserting final notification status | success=" + success + " | " + err);
         jobData["return"] = {
           success: success,
           error: err,

@@ -94,19 +94,23 @@ processJob = (job, callback)->
             if response?
                 msg = "ERROR: received HTTP response with code "+response.statusCode
             else
-                msg = "ERROR: no HTTP response received"
+                if data instanceof Error
+                    msg = ""+data
+                else
+                    msg = "ERROR: no HTTP response received"
 
+        # console.log "[#{new Date().toString()}] #{job.id} finish success=#{success}"
         finishJob(success, msg)
         return
 
     .on 'timeout', (e)->
-        console.log "[#{new Date().toString()}] timeout", e
-        finishJob(false, "Timeout: "+e)
+        console.log "[#{new Date().toString()}] #{job.id} timeout", e
+        # finishJob(false, "Timeout: "+e)
         return
 
     .on 'error', (e)->
-        console.log "[#{new Date().toString()}] http error", e
-        finishJob(false, "Error: "+e)
+        console.log "[#{new Date().toString()}] #{job.id} http error", e
+        # finishJob(false, "Error: "+e)
         return
 
     finishJob = (success, err)->
@@ -119,14 +123,14 @@ processJob = (job, callback)->
             finished = true
         else
             # error
-            console.log "[#{new Date().toString()}] error - retrying"
+            console.log "[#{new Date().toString()}] error - retrying | #{err}"
             if jobData.meta.attempt >= MAX_RETRIES
                 console.log "[#{new Date().toString()}] giving up after attempt #{jobData.meta.attempt}"
                 finished = true
 
 
         if finished
-            console.log "[#{new Date().toString()}] inserting final notification status"
+            console.log "[#{new Date().toString()}] inserting final notification status | success=#{success} | #{err}"
             jobData.return = {
                 success: success
                 error: err
