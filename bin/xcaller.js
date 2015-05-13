@@ -88,8 +88,8 @@
         id: jobData.meta.id,
         time: moment().utc().format(),
         attempt: jobData.meta.attempt,
-        apiToken: jobData.meta.apiToken,
-        signature: jobData.meta.signature,
+        apiToken: jobData.meta.apiToken != null ? jobData.meta.apiToken : void 0,
+        signature: jobData.meta.signature != null ? jobData.meta.signature : void 0,
         payload: jobData.payload
       })
     }).on('complete', function(data, response) {

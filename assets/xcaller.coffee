@@ -79,8 +79,8 @@ processJob = (job, callback)->
             id: jobData.meta.id
             time: moment().utc().format()
             attempt: jobData.meta.attempt
-            apiToken: jobData.meta.apiToken
-            signature: jobData.meta.signature
+            apiToken: jobData.meta.apiToken if jobData.meta.apiToken?
+            signature: jobData.meta.signature if jobData.meta.signature?
             payload: jobData.payload
         })
     }).on 'complete', (data, response)->
