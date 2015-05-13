@@ -6,9 +6,11 @@ Requires a running beanstalkd http://kr.github.io/beanstalkd/
 
 ## Installation
 
-`git clone https://github.com/tokenly/xcaller`
-`cd xcaller/bin`
-`npm install`
+```
+git clone https://github.com/tokenly/xcaller
+cd xcaller/bin
+npm install
+```
 
 ## Usage
 
