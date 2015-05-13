@@ -4,18 +4,20 @@
 #
 ###
 
-beanstalkHost  = process.env.BEANSTALK_HOST or '127.0.0.1'
-beanstalkPort  = process.env.BEANSTALK_PORT or 11300
-MAX_RETRIES    = process.env.MAX_RETRIES    or 30
-CLIENT_TIMEOUT = process.env.CLIENT_TIMEOUT or 10000  # <-- clients must respond in this amount of time
-MAX_QUEUE_SIZE = process.env.MAX_QUEUE_SIZE or 5
+beanstalkHost             = process.env.BEANSTALK_HOST            or '127.0.0.1'
+beanstalkPort             = process.env.BEANSTALK_PORT            or 11300
+MAX_RETRIES               = process.env.MAX_RETRIES               or 30
+CLIENT_TIMEOUT            = process.env.CLIENT_TIMEOUT            or 10000  # <-- clients must respond in this amount of time
+MAX_QUEUE_SIZE            = process.env.MAX_QUEUE_SIZE            or 5
+DEBUG                     = !!(process.env.DEBUG                  or false)
+NOTIFICATIONS_OUT_TUBE    = process.env.NOTIFICATIONS_OUT_TUBE    or 'notifications_out'
+NOTIFICATIONS_RETURN_TUBE = process.env.NOTIFICATIONS_RETURN_TUBE or 'notifications_return'
 
-http = require('http')
-
+http        = require('http')
 nodestalker = require('nodestalker')
-rest = require('restler')
-moment = require('moment')
-figlet = require('figlet')
+rest        = require('restler')
+moment      = require('moment')
+figlet      = require('figlet')
 
 # get one global write client
 
@@ -31,13 +33,13 @@ MAX_SHUTDOWN_DELAY = CLIENT_TIMEOUT + 1000  # <-- when shutting down, never wait
 jobCount = 0
 reserveJob = ()->
     if jobCount >= MAX_QUEUE_SIZE
-        console.log "[#{new Date().toString()}] jobCount of #{jobCount} has reached maximum.  Delaying."
+        if DEBUG then console.log "[#{new Date().toString()}] jobCount of #{jobCount} has reached maximum.  Delaying."
         setTimeout(reserveJob, 500)
         return
 
-    # console.log "[#{new Date().toString()}] connecting to beanstalk"
+    # if DEBUG then console.log "[#{new Date().toString()}] connecting to beanstalk"
     beanstalkReadClient = nodestalker.Client("#{beanstalkHost}:#{beanstalkPort}")
-    beanstalkReadClient.watch('notifications_out').onSuccess ()->
+    beanstalkReadClient.watch(NOTIFICATIONS_OUT_TUBE).onSuccess ()->
         beanstalkReadClient.reserve().onSuccess (job)->
             ++jobCount
 
@@ -46,7 +48,7 @@ reserveJob = ()->
 
             processJob job, (result)->
                 --jobCount
-                console.log "[#{new Date().toString()}] deleting job #{job.id}"
+                if DEBUG then console.log "[#{new Date().toString()}] deleting job #{job.id}"
                 beanstalkReadClient.deleteJob(job.id).onSuccess (del_msg)->
                     # deleted
                     #   end this connection
@@ -69,7 +71,7 @@ processJob = (job, callback)->
     jobData.meta.attempt = jobData.meta.attempt + 1
     href = jobData.meta.endpoint
 
-    console.log "[#{new Date().toString()}] begin processJob "+job.id+" (notificationId #{jobData.meta.id}, attempt #{jobData.meta.attempt} of #{MAX_RETRIES}, href #{href})"
+    if DEBUG then console.log "[#{new Date().toString()}] begin processJob "+job.id+" (notificationId #{jobData.meta.id}, attempt #{jobData.meta.attempt} of #{MAX_RETRIES}, href #{href})"
     rest.post(href, {
         headers: {'User-Agent': 'XChain Webhooks'}
         timeout: CLIENT_TIMEOUT
@@ -84,9 +86,9 @@ processJob = (job, callback)->
     }).on 'complete', (data, response)->
         msg = ''
         if response
-            console.log "[#{new Date().toString()}] received HTTP response: "+response?.statusCode?.toString()
+            if DEBUG then console.log "[#{new Date().toString()}] received HTTP response: "+response?.statusCode?.toString()
         else
-            console.log "[#{new Date().toString()}] received no HTTP response"
+            if DEBUG then console.log "[#{new Date().toString()}] received no HTTP response"
         if response? and response.statusCode.toString().charAt(0) == '2'
             success = true
         else
@@ -99,22 +101,22 @@ processJob = (job, callback)->
                 else
                     msg = "ERROR: no HTTP response received"
 
-        # console.log "[#{new Date().toString()}] #{job.id} finish success=#{success}"
+        # if DEBUG then console.log "[#{new Date().toString()}] #{job.id} finish success=#{success}"
         finishJob(success, msg)
         return
 
     .on 'timeout', (e)->
-        console.log "[#{new Date().toString()}] #{job.id} timeout", e
+        if DEBUG then console.log "[#{new Date().toString()}] #{job.id} timeout", e
         # finishJob(false, "Timeout: "+e)
         return
 
     .on 'error', (e)->
-        console.log "[#{new Date().toString()}] #{job.id} http error", e
+        if DEBUG then console.log "[#{new Date().toString()}] #{job.id} http error", e
         # finishJob(false, "Error: "+e)
         return
 
     finishJob = (success, err)->
-        console.log "[#{new Date().toString()}] end "+job.id+""
+        if DEBUG then console.log "[#{new Date().toString()}] end "+job.id+""
 
         # if done
         #   then push the job back to the beanstalk notification_result queue with the new state
@@ -123,14 +125,14 @@ processJob = (job, callback)->
             finished = true
         else
             # error
-            console.log "[#{new Date().toString()}] error - retrying | #{err}"
+            if DEBUG then console.log "[#{new Date().toString()}] error - retrying | #{err}"
             if jobData.meta.attempt >= MAX_RETRIES
-                console.log "[#{new Date().toString()}] giving up after attempt #{jobData.meta.attempt}"
+                if DEBUG then console.log "[#{new Date().toString()}] giving up after attempt #{jobData.meta.attempt}"
                 finished = true
 
 
         if finished
-            console.log "[#{new Date().toString()}] inserting final notification status | success=#{success} | #{err}"
+            if DEBUG then console.log "[#{new Date().toString()}] inserting final notification status | success=#{success} | #{err}"
             jobData.return = {
                 success: success
                 error: err
@@ -141,13 +143,13 @@ processJob = (job, callback)->
                 job: "App\\Jobs\\XChain\\NotificationReturnJob"
                 data: jobData
             }
-            insertJobIntoBeanstalk 'notifications_return', queueEntry, 10, 0, (loadSuccess)->
+            insertJobIntoBeanstalk NOTIFICATIONS_RETURN_TUBE, queueEntry, 10, 0, (loadSuccess)->
                 if loadSuccess
                     callback(true)
                 return
         else
             # retry
-            insertJobIntoBeanstalk 'notifications_out', jobData, RETRY_PRIORITY, RETRY_DELAY * jobData.meta.attempt, (loadSuccess)->
+            insertJobIntoBeanstalk NOTIFICATIONS_OUT_TUBE, jobData, RETRY_PRIORITY, RETRY_DELAY * jobData.meta.attempt, (loadSuccess)->
                 if loadSuccess
                     callback(true)
                 return
@@ -162,15 +164,15 @@ insertJobIntoBeanstalk = (queue, data, retry_priority, retry_delay, callback)->
     beanstalkWriteClient.use(queue).onSuccess ()->
         beanstalkWriteClient.put(JSON.stringify(data), retry_priority, retry_delay)
         .onSuccess ()->
-            # console.log "job loaded"
+            # if DEBUG then console.log "job loaded"
             callback(true)
             return
         .onError ()->
-            console.log "[#{new Date().toString()}] error loading job to #{queue}"
+            if DEBUG then console.log "[#{new Date().toString()}] error loading job to #{queue}"
             callback(false)
         return
     .onError ()->
-        console.log "[#{new Date().toString()}] error connecting to beanstalk"
+        if DEBUG then console.log "[#{new Date().toString()}] error connecting to beanstalk"
         callback(false)
     return
 
@@ -179,28 +181,28 @@ insertJobIntoBeanstalk = (queue, data, retry_priority, retry_delay, callback)->
 
 gracefulShutdown = (callback)->
     startTimestamp = new Date().getTime()
-    console.log "[#{new Date().toString()}] begin shutdown"
+    if DEBUG then console.log "[#{new Date().toString()}] begin shutdown"
 
     intervalReference = setInterval(()->
         if jobCount == 0 or (new Date().getTime() - startTimestamp >= MAX_SHUTDOWN_DELAY)
             if jobCount > 0
-                console.log "[#{new Date().toString()}] Gave up waiting on #{jobCount} job(s)"
-            console.log "[#{new Date().toString()}] shutdown complete"
+                if DEBUG then console.log "[#{new Date().toString()}] Gave up waiting on #{jobCount} job(s)"
+            if DEBUG then console.log "[#{new Date().toString()}] shutdown complete"
             clearInterval(intervalReference)
             callback()
         else
-            console.log "[#{new Date().toString()}] waiting on #{jobCount} job(s)"
+            if DEBUG then console.log "[#{new Date().toString()}] waiting on #{jobCount} job(s)"
     , 250)
 
 # signal handler
 process.on "SIGTERM", ->
-    console.log "[#{new Date().toString()}] caught SIGTERM"
+    if DEBUG then console.log "[#{new Date().toString()}] caught SIGTERM"
     gracefulShutdown ()->
         process.exit 0
         return
 
 process.on "SIGINT", ->
-    console.log "[#{new Date().toString()}] caught SIGINT"
+    if DEBUG then console.log "[#{new Date().toString()}] caught SIGINT"
     gracefulShutdown ()->
         process.exit 0
         return
