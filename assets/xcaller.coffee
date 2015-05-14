@@ -104,66 +104,66 @@ processJob = (job, callback)->
                         msg = "ERROR: no HTTP response received"
 
             # if DEBUG then console.log "[#{new Date().toString()}] #{job.id} finish success=#{success}"
-            finishJob(success, msg)
+            finishJob(success, msg, jobData, job, callback)
             return
 
         .on 'timeout', (e)->
             if DEBUG then console.log "[#{new Date().toString()}] #{job.id} timeout", e
-            # finishJob(false, "Timeout: "+e)
+            # finishJob(false, "Timeout: "+e, jobData, job, callback)
             return
 
         .on 'error', (e)->
             if DEBUG then console.log "[#{new Date().toString()}] #{job.id} http error", e
-            # finishJob(false, "Error: "+e)
+            # finishJob(false, "Error: "+e, jobData, job, callback)
             return
 
     catch err
          if DEBUG then console.log "[#{new Date().toString()}] Caught ERROR:",err
-         finishJob(false, "Unexpected error: "+err)
+         finishJob(false, "Unexpected error: "+err, jobData, job, callback)
          return
-    
-
-    finishJob = (success, err)->
-        if DEBUG then console.log "[#{new Date().toString()}] end "+job.id+""
-
-        # if done
-        #   then push the job back to the beanstalk notification_result queue with the new state
-        finished = false
-        if success
-            finished = true
-        else
-            # error
-            if DEBUG then console.log "[#{new Date().toString()}] error - retrying | #{err}"
-            if jobData.meta.attempt >= MAX_RETRIES
-                if DEBUG then console.log "[#{new Date().toString()}] giving up after attempt #{jobData.meta.attempt}"
-                finished = true
-
-
-        if finished
-            if DEBUG then console.log "[#{new Date().toString()}] inserting final notification status | success=#{success} | #{err}"
-            jobData.return = {
-                success: success
-                error: err
-                timestamp: new Date().getTime()
-                totalAttempts: jobData.meta.attempt
-            }
-            queueEntry = {
-                job: "App\\Jobs\\XChain\\NotificationReturnJob"
-                data: jobData
-            }
-            insertJobIntoBeanstalk NOTIFICATIONS_RETURN_TUBE, queueEntry, 10, 0, (loadSuccess)->
-                if loadSuccess
-                    callback(true)
-                return
-        else
-            # retry
-            insertJobIntoBeanstalk NOTIFICATIONS_OUT_TUBE, jobData, RETRY_PRIORITY, RETRY_DELAY * jobData.meta.attempt, (loadSuccess)->
-                if loadSuccess
-                    callback(true)
-                return
-        return
 
     return
+
+finishJob = (success, err, jobData, job, callback)->
+    if DEBUG then console.log "[#{new Date().toString()}] end "+job.id+""
+
+    # if done
+    #   then push the job back to the beanstalk notification_result queue with the new state
+    finished = false
+    if success
+        finished = true
+    else
+        # error
+        if DEBUG then console.log "[#{new Date().toString()}] error - retrying | #{err}"
+        if jobData.meta.attempt >= MAX_RETRIES
+            if DEBUG then console.log "[#{new Date().toString()}] giving up after attempt #{jobData.meta.attempt}"
+            finished = true
+
+
+    if finished
+        if DEBUG then console.log "[#{new Date().toString()}] inserting final notification status | success=#{success} | #{err}"
+        jobData.return = {
+            success: success
+            error: err
+            timestamp: new Date().getTime()
+            totalAttempts: jobData.meta.attempt
+        }
+        queueEntry = {
+            job: "App\\Jobs\\XChain\\NotificationReturnJob"
+            data: jobData
+        }
+        insertJobIntoBeanstalk NOTIFICATIONS_RETURN_TUBE, queueEntry, 10, 0, (loadSuccess)->
+            if loadSuccess
+                callback(true)
+            return
+    else
+        # retry
+        insertJobIntoBeanstalk NOTIFICATIONS_OUT_TUBE, jobData, RETRY_PRIORITY, RETRY_DELAY * jobData.meta.attempt, (loadSuccess)->
+            if loadSuccess
+                callback(true)
+            return
+    return
+
 
 
 # beanstalk

@@ -7,7 +7,7 @@
  */
 
 (function() {
-  var CLIENT_TIMEOUT, DEBUG, MAX_QUEUE_SIZE, MAX_RETRIES, MAX_SHUTDOWN_DELAY, NOTIFICATIONS_OUT_TUBE, NOTIFICATIONS_RETURN_TUBE, RETRY_DELAY, RETRY_PRIORITY, beanstalkHost, beanstalkPort, figlet, gracefulShutdown, http, insertJobIntoBeanstalk, jobCount, moment, nodestalker, processJob, reserveJob, rest;
+  var CLIENT_TIMEOUT, DEBUG, MAX_QUEUE_SIZE, MAX_RETRIES, MAX_SHUTDOWN_DELAY, NOTIFICATIONS_OUT_TUBE, NOTIFICATIONS_RETURN_TUBE, RETRY_DELAY, RETRY_PRIORITY, beanstalkHost, beanstalkPort, figlet, finishJob, gracefulShutdown, http, insertJobIntoBeanstalk, jobCount, moment, nodestalker, processJob, reserveJob, rest;
 
   beanstalkHost = process.env.BEANSTALK_HOST || '127.0.0.1';
 
@@ -71,7 +71,7 @@
   };
 
   processJob = function(job, callback) {
-    var err, finishJob, href, jobData, success;
+    var err, href, jobData, success;
     jobData = JSON.parse(job.data);
     success = false;
     jobData.meta.attempt = jobData.meta.attempt + 1;
@@ -119,7 +119,7 @@
             }
           }
         }
-        finishJob(success, msg);
+        finishJob(success, msg, jobData, job, callback);
       }).on('timeout', function(e) {
         if (DEBUG) {
           console.log("[" + (new Date().toString()) + "] " + job.id + " timeout", e);
@@ -134,55 +134,56 @@
       if (DEBUG) {
         console.log("[" + (new Date().toString()) + "] Caught ERROR:", err);
       }
-      finishJob(false, "Unexpected error: " + err);
+      finishJob(false, "Unexpected error: " + err, jobData, job, callback);
       return;
     }
-    finishJob = function(success, err) {
-      var finished, queueEntry;
+  };
+
+  finishJob = function(success, err, jobData, job, callback) {
+    var finished, queueEntry;
+    if (DEBUG) {
+      console.log(("[" + (new Date().toString()) + "] end ") + job.id + "");
+    }
+    finished = false;
+    if (success) {
+      finished = true;
+    } else {
       if (DEBUG) {
-        console.log(("[" + (new Date().toString()) + "] end ") + job.id + "");
+        console.log("[" + (new Date().toString()) + "] error - retrying | " + err);
       }
-      finished = false;
-      if (success) {
+      if (jobData.meta.attempt >= MAX_RETRIES) {
+        if (DEBUG) {
+          console.log("[" + (new Date().toString()) + "] giving up after attempt " + jobData.meta.attempt);
+        }
         finished = true;
-      } else {
-        if (DEBUG) {
-          console.log("[" + (new Date().toString()) + "] error - retrying | " + err);
-        }
-        if (jobData.meta.attempt >= MAX_RETRIES) {
-          if (DEBUG) {
-            console.log("[" + (new Date().toString()) + "] giving up after attempt " + jobData.meta.attempt);
-          }
-          finished = true;
-        }
       }
-      if (finished) {
-        if (DEBUG) {
-          console.log("[" + (new Date().toString()) + "] inserting final notification status | success=" + success + " | " + err);
-        }
-        jobData["return"] = {
-          success: success,
-          error: err,
-          timestamp: new Date().getTime(),
-          totalAttempts: jobData.meta.attempt
-        };
-        queueEntry = {
-          job: "App\\Jobs\\XChain\\NotificationReturnJob",
-          data: jobData
-        };
-        insertJobIntoBeanstalk(NOTIFICATIONS_RETURN_TUBE, queueEntry, 10, 0, function(loadSuccess) {
-          if (loadSuccess) {
-            callback(true);
-          }
-        });
-      } else {
-        insertJobIntoBeanstalk(NOTIFICATIONS_OUT_TUBE, jobData, RETRY_PRIORITY, RETRY_DELAY * jobData.meta.attempt, function(loadSuccess) {
-          if (loadSuccess) {
-            callback(true);
-          }
-        });
+    }
+    if (finished) {
+      if (DEBUG) {
+        console.log("[" + (new Date().toString()) + "] inserting final notification status | success=" + success + " | " + err);
       }
-    };
+      jobData["return"] = {
+        success: success,
+        error: err,
+        timestamp: new Date().getTime(),
+        totalAttempts: jobData.meta.attempt
+      };
+      queueEntry = {
+        job: "App\\Jobs\\XChain\\NotificationReturnJob",
+        data: jobData
+      };
+      insertJobIntoBeanstalk(NOTIFICATIONS_RETURN_TUBE, queueEntry, 10, 0, function(loadSuccess) {
+        if (loadSuccess) {
+          callback(true);
+        }
+      });
+    } else {
+      insertJobIntoBeanstalk(NOTIFICATIONS_OUT_TUBE, jobData, RETRY_PRIORITY, RETRY_DELAY * jobData.meta.attempt, function(loadSuccess) {
+        if (loadSuccess) {
+          callback(true);
+        }
+      });
+    }
   };
 
   insertJobIntoBeanstalk = function(queue, data, retry_priority, retry_delay, callback) {
