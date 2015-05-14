@@ -71,49 +71,57 @@ processJob = (job, callback)->
     jobData.meta.attempt = jobData.meta.attempt + 1
     href = jobData.meta.endpoint
 
-    if DEBUG then console.log "[#{new Date().toString()}] begin processJob "+job.id+" (notificationId #{jobData.meta.id}, attempt #{jobData.meta.attempt} of #{MAX_RETRIES}, href #{href})"
-    rest.post(href, {
-        headers: {'User-Agent': 'XChain Webhooks'}
-        timeout: CLIENT_TIMEOUT
-        data: JSON.stringify({
-            id: jobData.meta.id
-            time: moment().utc().format()
-            attempt: jobData.meta.attempt
-            apiToken: jobData.meta.apiToken if jobData.meta.apiToken?
-            signature: jobData.meta.signature if jobData.meta.signature?
-            payload: jobData.payload
-        })
-    }).on 'complete', (data, response)->
-        msg = ''
-        if response
-            if DEBUG then console.log "[#{new Date().toString()}] received HTTP response: "+response?.statusCode?.toString()
-        else
-            if DEBUG then console.log "[#{new Date().toString()}] received no HTTP response"
-        if response? and response.statusCode.toString().charAt(0) == '2'
-            success = true
-        else
-            success = false
-            if response?
-                msg = "ERROR: received HTTP response with code "+response.statusCode
+    try
+
+        if DEBUG then console.log "[#{new Date().toString()}] begin processJob "+job.id+" (notificationId #{jobData.meta.id}, attempt #{jobData.meta.attempt} of #{MAX_RETRIES}, href #{href})"
+        rest.post(href, {
+            headers: {'User-Agent': 'XChain Webhooks'}
+            timeout: CLIENT_TIMEOUT
+            data: JSON.stringify({
+                id: jobData.meta.id
+                time: moment().utc().format()
+                attempt: jobData.meta.attempt
+                apiToken: jobData.meta.apiToken if jobData.meta.apiToken?
+                signature: jobData.meta.signature if jobData.meta.signature?
+                payload: jobData.payload
+            })
+        }).on 'complete', (data, response)->
+            msg = ''
+            if response
+                if DEBUG then console.log "[#{new Date().toString()}] received HTTP response: "+response?.statusCode?.toString()
             else
-                if data instanceof Error
-                    msg = ""+data
+                if DEBUG then console.log "[#{new Date().toString()}] received no HTTP response"
+            if response? and response.statusCode.toString().charAt(0) == '2'
+                success = true
+            else
+                success = false
+                if response?
+                    msg = "ERROR: received HTTP response with code "+response.statusCode
                 else
-                    msg = "ERROR: no HTTP response received"
+                    if data instanceof Error
+                        msg = ""+data
+                    else
+                        msg = "ERROR: no HTTP response received"
 
-        # if DEBUG then console.log "[#{new Date().toString()}] #{job.id} finish success=#{success}"
-        finishJob(success, msg)
-        return
+            # if DEBUG then console.log "[#{new Date().toString()}] #{job.id} finish success=#{success}"
+            finishJob(success, msg)
+            return
 
-    .on 'timeout', (e)->
-        if DEBUG then console.log "[#{new Date().toString()}] #{job.id} timeout", e
-        # finishJob(false, "Timeout: "+e)
-        return
+        .on 'timeout', (e)->
+            if DEBUG then console.log "[#{new Date().toString()}] #{job.id} timeout", e
+            # finishJob(false, "Timeout: "+e)
+            return
 
-    .on 'error', (e)->
-        if DEBUG then console.log "[#{new Date().toString()}] #{job.id} http error", e
-        # finishJob(false, "Error: "+e)
-        return
+        .on 'error', (e)->
+            if DEBUG then console.log "[#{new Date().toString()}] #{job.id} http error", e
+            # finishJob(false, "Error: "+e)
+            return
+
+    catch err
+         if DEBUG then console.log "[#{new Date().toString()}] Caught ERROR:",err
+         finishJob(false, "Unexpected error: "+err)
+         return
+    
 
     finishJob = (success, err)->
         if DEBUG then console.log "[#{new Date().toString()}] end "+job.id+""

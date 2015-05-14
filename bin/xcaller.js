@@ -71,63 +71,72 @@
   };
 
   processJob = function(job, callback) {
-    var finishJob, href, jobData, success;
+    var err, finishJob, href, jobData, success;
     jobData = JSON.parse(job.data);
     success = false;
     jobData.meta.attempt = jobData.meta.attempt + 1;
     href = jobData.meta.endpoint;
-    if (DEBUG) {
-      console.log(("[" + (new Date().toString()) + "] begin processJob ") + job.id + (" (notificationId " + jobData.meta.id + ", attempt " + jobData.meta.attempt + " of " + MAX_RETRIES + ", href " + href + ")"));
-    }
-    rest.post(href, {
-      headers: {
-        'User-Agent': 'XChain Webhooks'
-      },
-      timeout: CLIENT_TIMEOUT,
-      data: JSON.stringify({
-        id: jobData.meta.id,
-        time: moment().utc().format(),
-        attempt: jobData.meta.attempt,
-        apiToken: jobData.meta.apiToken != null ? jobData.meta.apiToken : void 0,
-        signature: jobData.meta.signature != null ? jobData.meta.signature : void 0,
-        payload: jobData.payload
-      })
-    }).on('complete', function(data, response) {
-      var msg, ref;
-      msg = '';
-      if (response) {
-        if (DEBUG) {
-          console.log(("[" + (new Date().toString()) + "] received HTTP response: ") + (response != null ? (ref = response.statusCode) != null ? ref.toString() : void 0 : void 0));
-        }
-      } else {
-        if (DEBUG) {
-          console.log("[" + (new Date().toString()) + "] received no HTTP response");
-        }
+    try {
+      if (DEBUG) {
+        console.log(("[" + (new Date().toString()) + "] begin processJob ") + job.id + (" (notificationId " + jobData.meta.id + ", attempt " + jobData.meta.attempt + " of " + MAX_RETRIES + ", href " + href + ")"));
       }
-      if ((response != null) && response.statusCode.toString().charAt(0) === '2') {
-        success = true;
-      } else {
-        success = false;
-        if (response != null) {
-          msg = "ERROR: received HTTP response with code " + response.statusCode;
+      rest.post(href, {
+        headers: {
+          'User-Agent': 'XChain Webhooks'
+        },
+        timeout: CLIENT_TIMEOUT,
+        data: JSON.stringify({
+          id: jobData.meta.id,
+          time: moment().utc().format(),
+          attempt: jobData.meta.attempt,
+          apiToken: jobData.meta.apiToken != null ? jobData.meta.apiToken : void 0,
+          signature: jobData.meta.signature != null ? jobData.meta.signature : void 0,
+          payload: jobData.payload
+        })
+      }).on('complete', function(data, response) {
+        var msg, ref;
+        msg = '';
+        if (response) {
+          if (DEBUG) {
+            console.log(("[" + (new Date().toString()) + "] received HTTP response: ") + (response != null ? (ref = response.statusCode) != null ? ref.toString() : void 0 : void 0));
+          }
         } else {
-          if (data instanceof Error) {
-            msg = "" + data;
-          } else {
-            msg = "ERROR: no HTTP response received";
+          if (DEBUG) {
+            console.log("[" + (new Date().toString()) + "] received no HTTP response");
           }
         }
-      }
-      finishJob(success, msg);
-    }).on('timeout', function(e) {
+        if ((response != null) && response.statusCode.toString().charAt(0) === '2') {
+          success = true;
+        } else {
+          success = false;
+          if (response != null) {
+            msg = "ERROR: received HTTP response with code " + response.statusCode;
+          } else {
+            if (data instanceof Error) {
+              msg = "" + data;
+            } else {
+              msg = "ERROR: no HTTP response received";
+            }
+          }
+        }
+        finishJob(success, msg);
+      }).on('timeout', function(e) {
+        if (DEBUG) {
+          console.log("[" + (new Date().toString()) + "] " + job.id + " timeout", e);
+        }
+      }).on('error', function(e) {
+        if (DEBUG) {
+          console.log("[" + (new Date().toString()) + "] " + job.id + " http error", e);
+        }
+      });
+    } catch (_error) {
+      err = _error;
       if (DEBUG) {
-        console.log("[" + (new Date().toString()) + "] " + job.id + " timeout", e);
+        console.log("[" + (new Date().toString()) + "] Caught ERROR:", err);
       }
-    }).on('error', function(e) {
-      if (DEBUG) {
-        console.log("[" + (new Date().toString()) + "] " + job.id + " http error", e);
-      }
-    });
+      finishJob(false, "Unexpected error: " + err);
+      return;
+    }
     finishJob = function(success, err) {
       var finished, queueEntry;
       if (DEBUG) {
