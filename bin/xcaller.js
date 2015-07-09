@@ -124,6 +124,7 @@
         if (DEBUG) {
           console.log("[" + (new Date().toString()) + "] " + job.id + " timeout", e);
         }
+        finishJob(false, "Timeout: " + e, jobData, job, callback);
       }).on('error', function(e) {
         if (DEBUG) {
           console.log("[" + (new Date().toString()) + "] " + job.id + " http error", e);

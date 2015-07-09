@@ -109,12 +109,15 @@ processJob = (job, callback)->
 
         .on 'timeout', (e)->
             if DEBUG then console.log "[#{new Date().toString()}] #{job.id} timeout", e
-            # finishJob(false, "Timeout: "+e, jobData, job, callback)
+
+            # 'complete' will not be called on a timeout failure
+            finishJob(false, "Timeout: "+e, jobData, job, callback)
+            
             return
 
         .on 'error', (e)->
+            # 'complete' will be called after this
             if DEBUG then console.log "[#{new Date().toString()}] #{job.id} http error", e
-            # finishJob(false, "Error: "+e, jobData, job, callback)
             return
 
     catch err
