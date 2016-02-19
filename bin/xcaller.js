@@ -7,7 +7,7 @@
  */
 
 (function() {
-  var CLIENT_TIMEOUT, DEBUG, JOB_LOG_FILENAME, MAX_QUEUE_SIZE, MAX_RETRIES, MAX_SHUTDOWN_DELAY, NOTIFICATIONS_OUT_TUBE, NOTIFICATIONS_RETURN_TUBE, RETRY_DELAY, RETRY_PRIORITY, VERSION, beanstalkHost, beanstalkPort, figlet, finishJob, gracefulShutdown, http, insertJobIntoBeanstalk, jobCount, logger, moment, nodestalker, processJob, reserveJob, rest, winston;
+  var CLIENT_TIMEOUT, DEBUG, JOB_LOG_FILENAME, MAX_QUEUE_SIZE, MAX_RETRIES, MAX_SHUTDOWN_DELAY, NOTIFICATIONS_OUT_TUBE, NOTIFICATIONS_RETURN_TUBE, RETRY_DELAY, RETRY_PRIORITY, VERSION, beanstalkHost, beanstalkPort, figlet, finishJob, gracefulShutdown, http, insertJobIntoBeanstalk, jobCount, logger, moment, nodestalker, processJob, reserveJob, rest, translateLevel, winston;
 
   beanstalkHost = process.env.BEANSTALK_HOST || '127.0.0.1';
 
@@ -27,7 +27,7 @@
 
   JOB_LOG_FILENAME = process.env.JOB_LOG_FILENAME || null;
 
-  VERSION = '0.2.0';
+  VERSION = '0.2.1';
 
   http = require('http');
 
@@ -64,10 +64,36 @@
   });
 
   if (JOB_LOG_FILENAME) {
+    translateLevel = function(levelString) {
+      var map;
+      map = {
+        silly: 50,
+        debug: 100,
+        info: 200,
+        notice: 250,
+        warning: 300,
+        error: 400,
+        critical: 500,
+        alert: 550,
+        emergency: 600
+      };
+      if (map[levelString] != null) {
+        return map[levelString];
+      }
+      return 0;
+    };
     logger.add(winston.transports.File, {
       filename: JOB_LOG_FILENAME,
-      json: true,
-      level: 'debug'
+      level: 'debug',
+      json: false,
+      formatter: function(options) {
+        var jsonData;
+        jsonData = JSON.parse(JSON.stringify(options.meta));
+        jsonData.level = translateLevel(options.level);
+        jsonData.timestamp = options.timestamp;
+        jsonData.message = options.message;
+        return JSON.stringify(jsonData);
+      }
     });
   }
 

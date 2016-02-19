@@ -13,7 +13,7 @@ DEBUG                     = !!(process.env.DEBUG                  or false)
 NOTIFICATIONS_OUT_TUBE    = process.env.NOTIFICATIONS_OUT_TUBE    or 'notifications_out'
 NOTIFICATIONS_RETURN_TUBE = process.env.NOTIFICATIONS_RETURN_TUBE or 'notifications_return'
 JOB_LOG_FILENAME          = process.env.JOB_LOG_FILENAME          or null
-VERSION                   = '0.2.0'
+VERSION                   = '0.2.1'
 
 http        = require('http')
 nodestalker = require('nodestalker')
@@ -33,8 +33,8 @@ MAX_SHUTDOWN_DELAY = CLIENT_TIMEOUT + 1000  # <-- when shutting down, never wait
 
 # init winston logging
 logger = new winston.Logger({
-  transports: []
-  exitOnError: false
+    transports: []
+    exitOnError: false
 })
 logger.add(winston.transports.Console, {
     handleExceptions: true
@@ -47,7 +47,32 @@ logger.add(winston.transports.Console, {
     level: if DEBUG then 'debug' else 'info'
 })
 if JOB_LOG_FILENAME
-    logger.add(winston.transports.File, { filename: JOB_LOG_FILENAME, json: true, level: 'debug'})
+    translateLevel = (levelString)->
+        map = {
+            silly:     50
+            debug:     100
+            info:      200
+            notice:    250
+            warning:   300
+            error:     400
+            critical:  500
+            alert:     550
+            emergency: 600
+        }
+        if map[levelString]? then return map[levelString]
+        return 0
+
+    logger.add(winston.transports.File, {
+        filename: JOB_LOG_FILENAME,
+        level: 'debug',
+        json: false,
+        formatter: (options)->
+            jsonData = JSON.parse(JSON.stringify(options.meta))
+            jsonData.level     = translateLevel(options.level)
+            jsonData.timestamp = options.timestamp
+            jsonData.message   = options.message
+            return JSON.stringify(jsonData)
+    })
 
 
 # listen
