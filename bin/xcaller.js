@@ -69,9 +69,9 @@
       map = {
         silly: 50,
         debug: 100,
+        verbose: 150,
         info: 200,
-        notice: 250,
-        warning: 300,
+        warn: 300,
         error: 400,
         critical: 500,
         alert: 550,
