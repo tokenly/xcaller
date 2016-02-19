@@ -240,7 +240,7 @@
 
   finishJob = function(success, err, jobData, job, callback) {
     var finished, queueEntry, ref, ref1, returnJobName, returnTube;
-    logger.debug("Job finished", {
+    logger.silly("Job finished", {
       name: 'job.finish',
       jobId: job.id,
       notificationId: jobData.meta.id
@@ -272,6 +272,7 @@
         name: 'job.finished',
         jobId: job.id,
         notificationId: jobData.meta.id,
+        href: jobData.meta.endpoint,
         totalAttempts: jobData.meta.attempt,
         success: success,
         error: err

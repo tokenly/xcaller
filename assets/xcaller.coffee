@@ -178,7 +178,7 @@ processJob = (job, callback)->
     return
 
 finishJob = (success, err, jobData, job, callback)->
-    logger.debug("Job finished", {name: 'job.finish', jobId: job.id, notificationId: jobData.meta.id, })
+    logger.silly("Job finished", {name: 'job.finish', jobId: job.id, notificationId: jobData.meta.id, })
 
     # if done
     #   then push the job back to the beanstalk notification_result queue with the new state
@@ -196,7 +196,7 @@ finishJob = (success, err, jobData, job, callback)->
 
 
     if finished
-        logger.info("Job finished", {name: 'job.finished', jobId: job.id, notificationId: jobData.meta.id, totalAttempts: jobData.meta.attempt, success: success, error: err, })
+        logger.info("Job finished", {name: 'job.finished', jobId: job.id, notificationId: jobData.meta.id, href: jobData.meta.endpoint, totalAttempts: jobData.meta.attempt, success: success, error: err, })
 
         returnTube = jobData.meta.returnTubeName ? NOTIFICATIONS_RETURN_TUBE
         if returnTube
