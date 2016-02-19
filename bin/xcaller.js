@@ -86,11 +86,14 @@
       filename: JOB_LOG_FILENAME,
       level: 'debug',
       json: false,
+      timestamp: function() {
+        return new Date().toISOString();
+      },
       formatter: function(options) {
         var jsonData;
         jsonData = JSON.parse(JSON.stringify(options.meta));
         jsonData.level = translateLevel(options.level);
-        jsonData.timestamp = options.timestamp;
+        jsonData.timestamp = options.timestamp();
         jsonData.message = options.message;
         return JSON.stringify(jsonData);
       }
