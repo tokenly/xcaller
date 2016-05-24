@@ -167,17 +167,17 @@ processJob = (job, callback)->
 
         .on 'error', (e)->
             # 'complete' will be called after this
-            logger.error("HTTP error", {name: 'job.httpError', jobId: job.id, notificationId: jobData.meta.id, error: e, href: href, })
+            logger.error("HTTP error", {name: 'job.httpError', jobId: job.id, notificationId: jobData.meta.id, error: e.message, href: href, })
             return
 
     catch err
-        logger.error("Unexpected error", {name: 'job.error', jobId: job.id, notificationId: jobData.meta.id, error: err, href: href, })
+        logger.error("Unexpected error", {name: 'job.error', jobId: job.id, notificationId: jobData.meta.id, error: err.message, href: href, })
         finishJob(false, "Unexpected error: "+err, jobData, job, callback)
         return
 
     return
 
-finishJob = (success, err, jobData, job, callback)->
+finishJob = (success, errString, jobData, job, callback)->
     logger.silly("Job finished", {name: 'job.finish', jobId: job.id, notificationId: jobData.meta.id, })
 
     # if done
@@ -191,12 +191,12 @@ finishJob = (success, err, jobData, job, callback)->
             logger.warn("Job giving up after attempt #{jobData.meta.attempt}", {name: 'job.failed', jobId: job.id, notificationId: jobData.meta.id, attempts: jobData.meta.attempt, })
             finished = true
         else
-            logger.debug("Retrying job after error", {name: 'job.retry', jobId: job.id, notificationId: jobData.meta.id, attempts: jobData.meta.attempt, error: err, })
+            logger.debug("Retrying job after error", {name: 'job.retry', jobId: job.id, notificationId: jobData.meta.id, attempts: jobData.meta.attempt, error: errString, })
 
 
 
     if finished
-        logger.info("Job finished", {name: 'job.finished', jobId: job.id, notificationId: jobData.meta.id, href: jobData.meta.endpoint, totalAttempts: jobData.meta.attempt, success: success, error: err, })
+        logger.info("Job finished", {name: 'job.finished', jobId: job.id, notificationId: jobData.meta.id, href: jobData.meta.endpoint, totalAttempts: jobData.meta.attempt, success: success, error: errString, })
 
         returnTube = jobData.meta.returnTubeName ? NOTIFICATIONS_RETURN_TUBE
         if returnTube
