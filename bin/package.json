@@ -6,7 +6,7 @@
   "dependencies": {
     "figlet": "^1.1.0",
     "moment": "^2",
-    "nodestalker": "^0.1",
+    "fivebeans": "^1.5.0",
     "restler": "^3",
     "winston": "^2.1.1"
   },

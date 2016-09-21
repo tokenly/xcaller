@@ -7,7 +7,7 @@
  */
 
 (function() {
-  var CLIENT_TIMEOUT, DEBUG, JOB_LOG_FILENAME, MAX_QUEUE_SIZE, MAX_RETRIES, MAX_SHUTDOWN_DELAY, NOTIFICATIONS_OUT_TUBE, NOTIFICATIONS_RETURN_TUBE, RETRY_DELAY, RETRY_PRIORITY, VERSION, beanstalkHost, beanstalkPort, figlet, finishJob, gracefulShutdown, http, insertJobIntoBeanstalk, jobCount, logger, moment, nodestalker, processJob, reserveJob, rest, translateLevel, winston;
+  var BUSY_REPORT_INTERVAL_TIME, CLIENT_TIMEOUT, DEBUG, EventEmitter, JOB_LOG_FILENAME, MAX_QUEUE_SIZE, MAX_RETRIES, MAX_SHUTDOWN_DELAY, NOTIFICATIONS_OUT_TUBE, NOTIFICATIONS_RETURN_TUBE, SILLY, VERSION, Worker, beanstalkHost, beanstalkPort, busyIntervalRef, createWorkers, figlet, getNumberOfWorkersBusy, getNumberOfWorkersRunning, gracefulShutdown, handleClosedWorker, logger, restartWorker, runAllWorkers, runBusyReport, running, startWorker, startWorkers, stopAllWorkers, translateLevel, winston, workerEvents, workers;
 
   beanstalkHost = process.env.BEANSTALK_HOST || '127.0.0.1';
 
@@ -21,29 +21,23 @@
 
   DEBUG = !!(process.env.DEBUG || false);
 
+  SILLY = !!(process.env.SILLY || false);
+
   NOTIFICATIONS_OUT_TUBE = process.env.NOTIFICATIONS_OUT_TUBE || 'notifications_out';
 
   NOTIFICATIONS_RETURN_TUBE = process.env.NOTIFICATIONS_RETURN_TUBE || 'notifications_return';
 
   JOB_LOG_FILENAME = process.env.JOB_LOG_FILENAME || null;
 
-  VERSION = '0.2.1';
-
-  http = require('http');
-
-  nodestalker = require('nodestalker');
-
-  rest = require('restler');
-
-  moment = require('moment');
+  VERSION = '0.3.0';
 
   figlet = require('figlet');
 
   winston = require('winston');
 
-  RETRY_PRIORITY = 11;
+  Worker = require('./lib/worker');
 
-  RETRY_DELAY = 5;
+  EventEmitter = require('events').EventEmitter;
 
   MAX_SHUTDOWN_DELAY = CLIENT_TIMEOUT + 1000;
 
@@ -60,7 +54,7 @@
     formatter: function(options) {
       return ("[" + (options.timestamp()) + "] " + (options.level.toUpperCase()) + " ") + ("" + (void 0 !== options.message ? options.message + ' ' : '')) + (options.meta && Object.keys(options.meta).length ? JSON.stringify(options.meta) : '');
     },
-    level: DEBUG ? 'debug' : 'info'
+    level: SILLY ? 'silly' : DEBUG ? 'debug' : 'info'
   });
 
   if (JOB_LOG_FILENAME) {
@@ -100,260 +94,138 @@
     });
   }
 
-  jobCount = 0;
+  running = false;
 
-  reserveJob = function() {
-    var beanstalkReadClient;
-    if (jobCount >= MAX_QUEUE_SIZE) {
-      logger.info("jobCount of " + jobCount + " has reached maximum.  Delaying.", {
-        name: 'jobCount.exceeded',
-        count: jobCount,
-        maximum: MAX_QUEUE_SIZE
-      });
-      setTimeout(reserveJob, 500);
-      return;
-    }
-    beanstalkReadClient = nodestalker.Client(beanstalkHost + ":" + beanstalkPort);
-    beanstalkReadClient.watch(NOTIFICATIONS_OUT_TUBE).onSuccess(function() {
-      beanstalkReadClient.reserve().onSuccess(function(job) {
-        ++jobCount;
-        reserveJob();
-        processJob(job, function(result) {
-          --jobCount;
-          logger.silly("deleting job", {
-            name: 'job.delete',
-            jobId: job.id
-          });
-          beanstalkReadClient.deleteJob(job.id).onSuccess(function(del_msg) {
-            beanstalkReadClient.disconnect();
-          });
-        });
-      });
-    });
-  };
+  workerEvents = new EventEmitter();
 
-  processJob = function(job, callback) {
-    var err, error, href, jobData, success;
-    jobData = JSON.parse(job.data);
-    success = false;
-    jobData.meta.attempt = jobData.meta.attempt + 1;
-    href = jobData.meta.endpoint;
-    try {
-      logger.info("begin processing job", {
-        name: 'job.begin',
-        jobId: job.id,
-        notificationId: jobData.meta.id,
-        attempt: jobData.meta.attempt,
-        maxRetries: MAX_RETRIES,
-        href: href
-      });
-      rest.post(href, {
-        headers: {
-          'User-Agent': 'XCaller'
-        },
-        timeout: CLIENT_TIMEOUT,
-        data: JSON.stringify({
-          id: jobData.meta.id,
-          time: moment().utc().format(),
-          attempt: jobData.meta.attempt,
-          apiToken: jobData.meta.apiToken != null ? jobData.meta.apiToken : void 0,
-          signature: jobData.meta.signature != null ? jobData.meta.signature : void 0,
-          payload: jobData.payload
-        })
-      }).on('complete', function(data, response) {
-        var msg, ref, ref1, ref2, ref3, ref4;
-        msg = '';
-        if (response) {
-          logger.silly("received HTTP response code " + (response != null ? (ref = response.statusCode) != null ? ref.toString() : void 0 : void 0), {
-            name: 'job.response',
-            jobId: job.id,
-            notificationId: jobData.meta.id,
-            response: response != null ? (ref1 = response.statusCode) != null ? ref1.toString() : void 0 : void 0
-          });
-        } else {
-          logger.warn("received no HTTP response", {
-            name: 'job.noResponse',
-            jobId: job.id,
-            notificationId: jobData.meta.id,
-            href: href
-          });
-        }
-        if ((response != null) && response.statusCode.toString().charAt(0) === '2') {
-          logger.info("received valid HTTP response", {
-            name: 'job.validResponse',
-            jobId: job.id,
-            notificationId: jobData.meta.id,
-            status: response != null ? (ref2 = response.statusCode) != null ? ref2.toString() : void 0 : void 0
-          });
-          success = true;
-        } else {
-          logger.warn("received invalid HTTP response with response code " + (response != null ? (ref3 = response.statusCode) != null ? ref3.toString() : void 0 : void 0), {
-            name: 'job.invalidResponse',
-            jobId: job.id,
-            notificationId: jobData.meta.id,
-            status: response != null ? (ref4 = response.statusCode) != null ? ref4.toString() : void 0 : void 0,
-            href: href
-          });
-          success = false;
-          if (response != null) {
-            msg = "ERROR: received HTTP response with code " + response.statusCode;
-          } else {
-            if (data instanceof Error) {
-              msg = "" + data;
-            } else {
-              msg = "ERROR: no HTTP response received";
-            }
-          }
-        }
-        finishJob(success, msg, jobData, job, callback);
-      }).on('timeout', function(e) {
-        logger.warn("timeout waiting for HTTP response", {
-          name: 'job.timeout',
-          jobId: job.id,
-          notificationId: jobData.meta.id,
-          timeout: CLIENT_TIMEOUT,
-          href: href
-        });
-        finishJob(false, "Timeout: " + e, jobData, job, callback);
-      }).on('error', function(e) {
-        logger.error("HTTP error", {
-          name: 'job.httpError',
-          jobId: job.id,
-          notificationId: jobData.meta.id,
-          error: e,
-          href: href
-        });
-      });
-    } catch (error) {
-      err = error;
-      logger.error("Unexpected error", {
-        name: 'job.error',
-        jobId: job.id,
-        notificationId: jobData.meta.id,
-        error: err,
-        href: href
-      });
-      finishJob(false, "Unexpected error: " + err, jobData, job, callback);
-      return;
-    }
-  };
+  workers = [];
 
-  finishJob = function(success, err, jobData, job, callback) {
-    var finished, queueEntry, ref, ref1, returnJobName, returnTube;
-    logger.silly("Job finished", {
-      name: 'job.finish',
-      jobId: job.id,
-      notificationId: jobData.meta.id
-    });
-    finished = false;
-    if (success) {
-      finished = true;
-    } else {
-      if (jobData.meta.attempt >= MAX_RETRIES) {
-        logger.warn("Job giving up after attempt " + jobData.meta.attempt, {
-          name: 'job.failed',
-          jobId: job.id,
-          notificationId: jobData.meta.id,
-          attempts: jobData.meta.attempt
-        });
-        finished = true;
-      } else {
-        logger.debug("Retrying job after error", {
-          name: 'job.retry',
-          jobId: job.id,
-          notificationId: jobData.meta.id,
-          attempts: jobData.meta.attempt,
-          error: err
-        });
-      }
-    }
-    if (finished) {
-      logger.info("Job finished", {
-        name: 'job.finished',
-        jobId: job.id,
-        notificationId: jobData.meta.id,
-        href: jobData.meta.endpoint,
-        totalAttempts: jobData.meta.attempt,
-        success: success,
-        error: err
-      });
-      returnTube = (ref = jobData.meta.returnTubeName) != null ? ref : NOTIFICATIONS_RETURN_TUBE;
-      if (returnTube) {
-        returnJobName = (ref1 = jobData.meta.returnJobName) != null ? ref1 : "App\\Jobs\\XChain\\NotificationReturnJob";
-        jobData["return"] = {
-          success: success,
-          error: err,
-          timestamp: new Date().getTime(),
-          totalAttempts: jobData.meta.attempt
-        };
-        queueEntry = {
-          job: returnJobName,
-          data: jobData
-        };
-        insertJobIntoBeanstalk(returnTube, queueEntry, 10, 0, function(loadSuccess) {
-          if (loadSuccess) {
-            callback(true);
-          }
-        });
-      } else {
-        callback(true);
-      }
-    } else {
-      insertJobIntoBeanstalk(NOTIFICATIONS_OUT_TUBE, jobData, RETRY_PRIORITY, RETRY_DELAY * jobData.meta.attempt, function(loadSuccess) {
-        if (loadSuccess) {
-          callback(true);
-        }
-      });
-    }
-  };
-
-  insertJobIntoBeanstalk = function(queue, data, retry_priority, retry_delay, callback) {
-    var beanstalkWriteClient;
-    beanstalkWriteClient = nodestalker.Client(beanstalkHost + ":" + beanstalkPort);
-    beanstalkWriteClient.use(queue).onSuccess(function() {
-      beanstalkWriteClient.put(JSON.stringify(data), retry_priority, retry_delay).onSuccess(function() {
-        callback(true);
-      }).onError(function() {
-        logger.error("Error loading job", {
-          name: 'beanstalkLoad.failed',
-          queue: queue
-        });
-        return callback(false);
-      });
-    }).onError(function() {
-      logger.error("error connecting to beanstalk", {
-        name: 'beanstalkConnect.error',
+  createWorkers = function() {
+    var i, j, ref, results, worker;
+    results = [];
+    for (i = j = 0, ref = MAX_QUEUE_SIZE; 0 <= ref ? j < ref : j > ref; i = 0 <= ref ? ++j : --j) {
+      logger.silly("creating worker " + i);
+      worker = Worker.buildWorker({
+        workerId: i,
         beanstalkHost: beanstalkHost,
-        beanstalkPort: beanstalkPort
+        beanstalkPort: beanstalkPort,
+        outTube: NOTIFICATIONS_OUT_TUBE,
+        returnTube: NOTIFICATIONS_RETURN_TUBE,
+        clientTimeout: CLIENT_TIMEOUT,
+        maxRetries: MAX_RETRIES,
+        logger: logger
       });
-      return callback(false);
-    });
+      worker.on('closed', function(closedWorkerId) {
+        logger.silly("worker closed", {
+          id: closedWorkerId
+        });
+        return handleClosedWorker(closedWorkerId);
+      });
+      results.push(workers.push(worker));
+    }
+    return results;
+  };
+
+  handleClosedWorker = function(i) {
+    if (running) {
+      logger.silly("will restart closed worker " + i);
+      return setTimeout(function() {
+        logger.silly("restarting closed worker " + i);
+        return restartWorker(i);
+      }, 5000);
+    }
+  };
+
+  restartWorker = function(i) {
+    if (running) {
+      workers[i].run();
+    }
+  };
+
+  startWorker = function(i) {
+    logger.silly("start worker " + i);
+    workers[i].run();
+  };
+
+  startWorkers = function() {
+    var i, j, ref;
+    for (i = j = 0, ref = MAX_QUEUE_SIZE; 0 <= ref ? j < ref : j > ref; i = 0 <= ref ? ++j : --j) {
+      if (running) {
+        startWorker(i);
+      }
+    }
+  };
+
+  runAllWorkers = function() {
+    running = true;
+    startWorkers();
+  };
+
+  stopAllWorkers = function() {
+    var i, j, ref;
+    running = false;
+    for (i = j = 0, ref = MAX_QUEUE_SIZE; 0 <= ref ? j < ref : j > ref; i = 0 <= ref ? ++j : --j) {
+      workers[i].stop();
+    }
+  };
+
+  getNumberOfWorkersRunning = function() {
+    var count, i, j, ref;
+    count = 0;
+    for (i = j = 0, ref = MAX_QUEUE_SIZE; 0 <= ref ? j < ref : j > ref; i = 0 <= ref ? ++j : --j) {
+      if (workers[i].running) {
+        ++count;
+      }
+    }
+    return count;
+  };
+
+  getNumberOfWorkersBusy = function() {
+    var count, i, j, ref;
+    count = 0;
+    for (i = j = 0, ref = MAX_QUEUE_SIZE; 0 <= ref ? j < ref : j > ref; i = 0 <= ref ? ++j : --j) {
+      if (workers[i].busy) {
+        ++count;
+      }
+    }
+    return count;
   };
 
   gracefulShutdown = function(callback) {
-    var intervalReference, startTimestamp;
+    var intervalReference, runShutdown, startTimestamp;
     startTimestamp = new Date().getTime();
     if (DEBUG) {
       console.log("[" + (new Date().toString()) + "] begin shutdown");
     }
-    return intervalReference = setInterval(function() {
-      if (jobCount === 0 || (new Date().getTime() - startTimestamp >= MAX_SHUTDOWN_DELAY)) {
-        if (jobCount > 0) {
+    stopAllWorkers();
+    intervalReference = null;
+    runShutdown = function() {
+      var numberOfWorkersRunning;
+      numberOfWorkersRunning = getNumberOfWorkersRunning();
+      if (numberOfWorkersRunning === 0 || (new Date().getTime() - startTimestamp >= MAX_SHUTDOWN_DELAY)) {
+        if (numberOfWorkersRunning > 0) {
           if (DEBUG) {
-            console.log("[" + (new Date().toString()) + "] Gave up waiting on " + jobCount + " job(s)");
+            console.log("[" + (new Date().toString()) + "] Gave up waiting on " + numberOfWorkersRunning + " workers(s)");
           }
         }
         if (DEBUG) {
           console.log("[" + (new Date().toString()) + "] shutdown complete");
         }
-        clearInterval(intervalReference);
-        return callback();
+        if (intervalReference != null) {
+          clearInterval(intervalReference);
+        }
+        if (typeof busyIntervalRef !== "undefined" && busyIntervalRef !== null) {
+          clearInterval(busyIntervalRef);
+        }
+        callback();
       } else {
         if (DEBUG) {
-          return console.log("[" + (new Date().toString()) + "] waiting on " + jobCount + " job(s)");
+          console.log("[" + (new Date().toString()) + "] waiting on " + numberOfWorkersRunning + " worker(s)");
         }
       }
-    }, 250);
+    };
+    intervalReference = setInterval(runShutdown, 350);
+    runShutdown();
   };
 
   process.on("SIGTERM", function() {
@@ -382,6 +254,20 @@
     });
   });
 
+  runBusyReport = function() {
+    var numberOfWorkersRunning;
+    numberOfWorkersRunning = getNumberOfWorkersBusy();
+    logger.info("Using " + numberOfWorkersRunning + " of " + MAX_QUEUE_SIZE + " workers", {
+      name: "usageReport",
+      used: numberOfWorkersRunning,
+      max: MAX_QUEUE_SIZE
+    });
+  };
+
+  BUSY_REPORT_INTERVAL_TIME = 30;
+
+  busyIntervalRef = setInterval(runBusyReport, BUSY_REPORT_INTERVAL_TIME * 1000);
+
   figlet.text("Tokenly XCaller", 'Slant', function(err, data) {
     process.stdout.write(data + "\n\nVersion " + VERSION + "\nconnecting to beanstalkd at " + beanstalkHost + ":" + beanstalkPort + "\n\n");
   });
@@ -390,7 +276,8 @@
     logger.debug('start server', {
       name: 'lifecycle.start'
     });
-    return reserveJob();
+    createWorkers();
+    return runAllWorkers();
   }, 10);
 
 }).call(this);
