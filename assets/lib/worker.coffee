@@ -85,7 +85,7 @@ exports.buildWorker = (opts)->
 
                 logger.silly("running job #{jobid}")
                 jobData = JSON.parse(payload)
-                console.log "jobData is "+JSON.stringify(jobData)
+                # console.log "jobData is "+JSON.stringify(jobData)
                 self.busy = true
                 processJob jobid, jobData, (completed)->
                     client.destroy jobid, (err)->

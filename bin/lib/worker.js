@@ -157,7 +157,6 @@
         try {
           logger.silly("running job " + jobid);
           jobData = JSON.parse(payload);
-          console.log("jobData is " + JSON.stringify(jobData));
           self.busy = true;
           processJob(jobid, jobData, function(completed) {
             client.destroy(jobid, function(err) {
