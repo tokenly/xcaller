@@ -207,6 +207,12 @@
         if (href == null) {
           throw new Error("meta.endpoint was empty");
         }
+        if (href.indexOf('https://localhost') === 0) {
+          throw new Error("Ignoring call to https://localhost");
+        }
+        if (href.indexOf('http://localhost') === 0) {
+          throw new Error("Ignoring call to http://localhost");
+        }
         logger.info("begin processing job", {
           name: 'job.begin',
           jobId: jobid,
